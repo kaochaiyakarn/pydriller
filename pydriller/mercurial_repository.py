@@ -42,7 +42,7 @@ class MercurialRepository(Repository):
 
     def get_commit(self, commit_id: str):
         client = self._open_mercurial()
-        return CommitMercurial(client.log(commit_id), self.path, self.main_branch)
+        return CommitMercurial(client.log(commit_id)[0], self.path, self.main_branch)
 
     def get_commit_from_hglib(self, commit):
         return CommitMercurial(commit, self.path, self.main_branch)

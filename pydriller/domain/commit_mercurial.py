@@ -39,7 +39,7 @@ class CommitMercurial():
 
     @property
     def msg(self) -> str:
-        return self._c_object[6]
+        return self._c_object[5]
 
     @property
     def parents(self) -> List[str]:
@@ -83,10 +83,7 @@ class CommitMercurial():
         return ('Hash: {}'.format(self.hash) + '\n'
                 'Author: {}'.format(self.author.name) + '\n'
                 'Author email: {}'.format(self.author.email) + '\n'
-                'Committer: {}'.format(self.committer.name) + '\n'
-                'Committer email: {}'.format(self.committer.email) + '\n'
                 'Author date: {}'.format(self.author_date.strftime("%Y-%m-%d %H:%M:%S")) + '\n'
-                'Committer date: {}'.format(self.committer_date.strftime("%Y-%m-%d %H:%M:%S")) + '\n'
                 'Message: {}'.format(self.msg) + '\n'
                 'Parent: {}'.format("\n".join(map(str, self.parents))) + '\n'
                 'Merge: {}'.format(self.merge) + '\n'
