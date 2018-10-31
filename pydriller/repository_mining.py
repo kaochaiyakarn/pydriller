@@ -119,7 +119,7 @@ class RepositoryMining:
         repo_folder = os.path.join(tmp_folder, self._get_repo_name_from_url(repo))
         logger.info("Cloning {} in temporary folder {}".format(repo, repo_folder))
         Repo.clone_from(url=repo, to_path=repo_folder)
-        
+
         return repo_folder
 
     def traverse_commits(self) -> Generator[Commit, None, None]:

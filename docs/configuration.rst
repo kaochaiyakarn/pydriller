@@ -80,18 +80,17 @@ Filtering commits
 
 PyDriller comes with a set of common commit filters that you can apply:
 
-* *only\_in\_branches: List[str]*: only analyses commits that belong to certain branches.
-* *only\_in\_main\_branch: bool*: only analyses commits that belong to the main branch of the repository.
+* *only\_in\_branch: str*: only analyses commits that belong to a specific branch. (default is the active branch, which is master most of the time)
 * *only\_no\_merge: bool*: only analyses commits that are not merge commits.
 * *only\_modifications\_with\_file\_types: List[str]*: only analyses commits in which at least one modification was done in that file type, e.g., if you pass ".java", then, the it will visit only commits in which at least one Java file was modified; clearly, it will skip other commits.
 
 Examples::
 
-    # Only commits in main branch
-    RepositoryMining('path/to/the/repo', only_in_main_branch=True).traverse_commits()
+    # Only commits in branch1
+    RepositoryMining('path/to/the/repo', only_in_branch='branch1').traverse_commits()
 
-    # Only commits in main branch and no merges
-    RepositoryMining('path/to/the/repo', only_in_main_branch=True, only_no_merge=True).traverse_commits()
+    # Only commits in branch1 and no merges
+    RepositoryMining('path/to/the/repo', only_in_branch='branch1', only_no_merge=True).traverse_commits()
 
     # Only commits that modified a java file
     RepositoryMining('path/to/the/repo', only_modifications_with_file_types=['.java']).traverse_commits()
