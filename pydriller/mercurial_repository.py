@@ -3,22 +3,18 @@ from typing import List
 
 from pydriller.domain.commit_mercurial import CommitMercurial
 from pydriller.repository import Repository
-from hglib import client
 
 
 class MercurialRepository(Repository):
-    def __init__(self, path: str):
-        """
-        Init the Git Repository.
 
-        :param str path: path to the repository
-        """
-        super().__init__(path)
-        # client = hglib.open(path)
+    @property
+    def client(self):
+        return self._open_mercurial()
 
     def _open_mercurial(self):
-        client = hglib.open(self.path)
-        if self.main_branch == None:
+        client = hglib.open(str(self.path))
+
+        if self.main_branch is None:
             self._discover_main_branch(client)
         return client
 
@@ -26,23 +22,19 @@ class MercurialRepository(Repository):
         self.main_branch = client.tip().branch.decode('utf-8')
 
     def get_head(self):
-        client = self._open_mercurial()
-        return CommitMercurial(client.tip(), self.path, self.main_branch)
+        return CommitMercurial(self.client.tip(), self.path, self.main_branch)
 
     def get_list_commits(self):
         return self._get_all_commits()
 
     def _get_all_commits(self) -> List[CommitMercurial]:
-        client = self._open_mercurial()
-
         all_commits = []
-        for commit in client.log():
+        for commit in self.client.log():
             all_commits.append(self.get_commit_from_hglib(commit))
         return all_commits
 
     def get_commit(self, commit_id: str):
-        client = self._open_mercurial()
-        return CommitMercurial(client.log(commit_id)[0], self.path, self.main_branch)
+        return CommitMercurial(self.client.log(commit_id)[0], self.path, self.main_branch)
 
     def get_commit_from_hglib(self, commit):
         return CommitMercurial(commit, self.path, self.main_branch)

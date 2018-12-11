@@ -16,12 +16,12 @@ class CommitMercurial():
         self._main_branch = main_branch
 
     @property
-    def hash(self) -> str:
-        return self._c_object[1]
-
-    @property
     def changeset(self) -> int:
         return self._c_object[0]
+
+    @property
+    def hash(self) -> str:
+        return self._c_object[1]
 
     @property
     def author(self) -> Developer:

@@ -2,3 +2,4 @@ gitpython
 typing
 pytz
 lizard
+python-hglib

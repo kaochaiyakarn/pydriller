@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from threading import Lock
+from pathlib import Path
 
 from typing import Dict, List, Tuple
 
@@ -12,7 +13,8 @@ class Repository(ABC):
 
         :param str path: path to the repository
         """
-        self.path = path
+        self.path = Path(path)
+        self.project_name = self.path.name
         self.main_branch = None
         self.lock = Lock()
 
@@ -44,14 +46,14 @@ class Repository(ABC):
     def _delete_tmp_branch(self):
         pass
 
-    def files(self):
+    def files(self) -> List[str]:
         """
         Obtain the list of the files (excluding .git directory).
 
         :return: List[str], the list of the files
         """
         _all = []
-        for path, subdirs, files in os.walk(self.path):
+        for path, subdirs, files in os.walk(str(self.path)):
             if '.git' in path:
                 continue
             for name in files:
@@ -62,9 +64,13 @@ class Repository(ABC):
     def reset(self):
         pass
 
-    @abstractmethod
     def total_commits(self):
-        pass
+        """
+        Calculate total number of commits.
+
+        :return: the total number of commits
+        """
+        return len(self.get_list_commits())
 
     @abstractmethod
     def get_commit_from_tag(self, tag: str):
