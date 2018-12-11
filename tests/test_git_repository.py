@@ -13,11 +13,23 @@
 # limitations under the License.
 
 import logging
-import pytest
-from pydriller.git_repository import GitRepository
-from pydriller.domain.commit import ModificationType
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+import pytest
+
+from pydriller.domain.commit import ModificationType
+from pydriller.git_repository import GitRepository
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+
+def test_projectname():
+    gr = GitRepository('test-repos/test1/')
+    assert gr.project_name == "test1"
+
+    gr = GitRepository('test-repos/test1')
+    assert gr.project_name == "test1"
 
 
 def test_get_head():
@@ -66,24 +78,26 @@ def test_get_first_commit():
     assert 'a88c84ddf42066611e76e6cb690144e5357d132c' == c.hash
     assert 'ishepard' == c.author.name
     assert 'ishepard' == c.committer.name
-    assert datetime(2018,3,22,10,41,11,tzinfo=to_zone).timestamp() == c.author_date.timestamp()
+    assert datetime(2018, 3, 22, 10, 41, 11, tzinfo=to_zone).timestamp() == c.author_date.timestamp()
+    assert datetime(2018, 3, 22, 10, 41, 11, tzinfo=to_zone).timestamp() == c.committer_date.timestamp()
     assert 2 == len(c.modifications)
     assert 'First commit adding 2 files' == c.msg
     assert c.in_main_branch is True
 
+
 def test_files():
-    gr = GitRepository('test-repos/test2/')
+    gr = GitRepository('test-repos/test2')
     all = gr.files()
 
     assert 8 == len(all)
-    assert 'test-repos/test2/tmp1.py' in all
-    assert 'test-repos/test2/tmp2.py' in all
-    assert 'test-repos/test2/fold1/tmp3.py' in all
-    assert 'test-repos/test2/fold1/tmp4.py' in all
-    assert 'test-repos/test2/fold2/tmp5.py' in all
-    assert 'test-repos/test2/fold2/tmp6.py' in all
-    assert 'test-repos/test2/fold2/fold3/tmp7.py' in all
-    assert 'test-repos/test2/fold2/fold3/tmp8.py' in all
+    assert str(Path('test-repos/test2/tmp1.py')) in all
+    assert str(Path('test-repos/test2/tmp2.py')) in all
+    assert str(Path('test-repos/test2/fold1/tmp3.py')) in all
+    assert str(Path('test-repos/test2/fold1/tmp4.py')) in all
+    assert str(Path('test-repos/test2/fold2/tmp5.py')) in all
+    assert str(Path('test-repos/test2/fold2/tmp6.py')) in all
+    assert str(Path('test-repos/test2/fold2/fold3/tmp7.py')) in all
+    assert str(Path('test-repos/test2/fold2/fold3/tmp8.py')) in all
 
 
 def test_total_commits():
@@ -116,6 +130,31 @@ def test_list_files_in_commit():
     gr.checkout('9e71dd5726d775fb4a5f08506a539216e878adbb')
     files3 = gr.files()
     assert 3 == len(files3)
+    gr.reset()
+
+
+def test_checkout_consecutive_commits():
+    gr = GitRepository('test-repos/git-1/')
+    gr.checkout('a7053a4dcd627f5f4f213dc9aa002eb1caf926f8')
+    gr.checkout('f0dd1308bd904a9b108a6a40865166ee962af3d4')
+    gr.checkout('9e71dd5726d775fb4a5f08506a539216e878adbb')
+    files3 = gr.files()
+    assert 3 == len(files3)
+    gr.reset()
+
+
+def test_checkout_with_commit_not_fully_merged_to_master():
+    gr = GitRepository('test-repos/git-9/')
+    gr.checkout('developing')
+    files1 = gr.files()
+    assert 2 == len(files1)
+    gr.reset()
+    assert len(gr.repo.branches) == 4, "temp branch should be cleared."
+    files2 = gr.files()
+    assert 1 == len(files2)
+    gr.checkout('developing')
+    files1 = gr.files()
+    assert 2 == len(files1)
     gr.reset()
 
 
@@ -217,12 +256,15 @@ def test_modification_status():
     gr = GitRepository('test-repos/git-1/')
     commit = gr.get_commit('866e997a9e44cb4ddd9e00efe49361420aff2559')
     assert ModificationType.ADD == commit.modifications[0].change_type
+    assert None == commit.modifications[0].old_path
 
     commit = gr.get_commit('57dbd017d1a744b949e7ca0b1c1a3b3dd4c1cbc1')
     assert ModificationType.MODIFY == commit.modifications[0].change_type
+    assert commit.modifications[0].old_path == commit.modifications[0].new_path
 
     commit = gr.get_commit('ffccf1e7497eb8136fd66ed5e42bef29677c4b71')
     assert ModificationType.DELETE == commit.modifications[0].change_type
+    assert None == commit.modifications[0].new_path
 
 
 def test_diffs():
@@ -239,6 +281,7 @@ def test_diffs():
         if mod.filename == 'file2.java':
             assert 12 == mod.removed
             assert 0 == mod.added
+
 
 def test_detail_rename():
     gr = GitRepository('test-repos/git-1/')
@@ -346,6 +389,7 @@ def test_get_commits_last_modified_lines_for_single_file():
 
     assert len(buggy_commits) == 1
     assert 'e2ed043eb96c05ebde653a44ae733ded9ef90750' in buggy_commits
+
 
 def test_get_commits_last_modified_lines_with_more_modification():
     gr = GitRepository('test-repos/test5/')

@@ -1,6 +1,4 @@
 gitpython
-pytest>=3.5.0
-psutil
 typing
 pytz
-requests
+lizard

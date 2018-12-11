@@ -6,24 +6,50 @@ Configuration
 
 One of the main advantage of using PyDriller to mine software repositories, is that is highly configurable. Let's start with selecting which commit to analyze.
 
+Selecting projects to analyze
+=============================
+The only required parameter of `RepositoryMining` is **path_to_repo**, which specifies the repo(s) to analyze. It must be of type `str` or `List[str]`, meaning analyze only one repository or more than one.
+
+Furthermore, PyDriller supports both local and remote repositories: if you pass an URL, PyDriller will automatically create a temporary folder, clone the repository, run the study, and finally delete the temporary folder. 
+
+For example, the following are all possible inputs for `RepositoryMining`::
+    
+    # analyze only 1 local repository
+    url = "repos/pydriller/" 
+    
+    # analyze 2 local repositories
+    url = ["repos/pydriller/", "repos/anotherrepo/"]  
+    
+    # analyze both local and remote
+    url = ["repos/pydriller/", "https://github.com/apache/hadoop.git", "repos/anotherrepo"] 
+    
+    # analyze 1 remote repository
+    url = "https://github.com/apache/hadoop.git" 
+
+To keep track of what project PyDriller is analyzing, the `Commit` object has a property called **project_name**.
+
 Selecting the Commit Range
 ==========================
 
-By default, PyDriller executes the visitor for all the commits in the repository. However, filters can be applied to `RepositoryMining` to visit *only specific* commits. 
+By default, PyDriller analyzes all the commits in the repository. However, filters can be applied to `RepositoryMining` to visit *only specific* commits. 
 
-* *single: str*: single hash of the commit. The visitor will be called only on this commit
+* **single** *(str)*: single hash of the commit. The visitor will be called only on this commit
 
 *FROM*:
 
-* *since: datetime*: only commits after this date will be analyzed
-* *from_commit: str*: only commits after this commit hash will be analyzed
-* *from_tag: str*: only commits after this commit tag will be analyzed
+* **since** *(datetime)*: only commits after this date will be analyzed
+* **from_commit** *(str)*: only commits after this commit hash will be analyzed
+* **from_tag** *(str)*: only commits after this commit tag will be analyzed
 
 *TO*:
 
-* *to: datetime*: only commits up to this date will be analyzed
-* *to_commit: str*: only commits up to this commit hash will be analyzed
-* *to_tag: str*: only commits up to this commit tag will be analyzed
+* **to** *(datetime)*: only commits up to this date will be analyzed
+* **to_commit** *(str)*: only commits up to this commit hash will be analyzed
+* **to_tag** *(str)*: only commits up to this commit tag will be analyzed
+
+*ORDER*:
+
+* **reverse\_order** *(bool)*: by default PyDriller returns the commits in chronological order (from the oldest to the newest, the contrary of `git log`). If you need viceversa instead, put this field to **True**.
 
 Examples::
 
@@ -58,30 +84,26 @@ Filtering commits
 
 PyDriller comes with a set of common commit filters that you can apply:
 
-* *only\_in\_branches: List[str]*: only visits commits that belong to certain branches.
-* *only\_in\_main\_branch: bool*: only visits commits that belong to the main branch of the repository.
-* *only\_no\_merge: bool*: only visits commits that are not merge commits.
-* *only\_modifications\_with\_file\_types: List[str]*: only visits commits in which at least one modification was done in that file type, e.g., if you pass ".java", then, the it will visit only commits in which at least one Java file was modified; clearly, it will skip other commits.
+* **only\_in\_branch** *(str)*: only analyses commits that belong to this branch.
+* **only\_no\_merge** *(bool)*: only analyses commits that are not merge commits.
+* **only\_authors** *(List[str])*: only analyses commits that are made by these authors. The check is made on the username, NOT the email.
+* **only\_commits** *(List[str])*: only these commits will be analyzed.
+* **only\_modifications\_with\_file\_types** *(List[str])*: only analyses commits in which at least one modification was done in that file type, e.g., if you pass ".java", then, the it will visit only commits in which at least one Java file was modified; clearly, it will skip other commits.
 
 Examples::
 
-    # Only commits in main branch
-    RepositoryMining('path/to/the/repo', only_in_main_branch=True).traverse_commits()
+    # Only commits in branch1
+    RepositoryMining('path/to/the/repo', only_in_branch='branch1').traverse_commits()
 
-    # Only commits in main branch and no merges
-    RepositoryMining('path/to/the/repo', only_in_main_branch=True, only_no_merge=True).traverse_commits()
+    # Only commits in branch1 and no merges
+    RepositoryMining('path/to/the/repo', only_in_branch='branch1', only_no_merge=True).traverse_commits()
+
+    # Only commits of author "ishepard" (yeah, that's me)
+    RepositoryMining('path/to/the/repo', only_authors=['ishepard']).traverse_commits()
+
+    # Only these 3 commits
+    RepositoryMining('path/to/the/repo', only_commits=['hash1', 'hash2', 'hash3']).traverse_commits()
 
     # Only commits that modified a java file
     RepositoryMining('path/to/the/repo', only_modifications_with_file_types=['.java']).traverse_commits()
-
-
-Threads
-=======
-TODO
-
-PyDriller can divide the work of analyzing a repository among multiple threads. If your machine has several cores, this can significantly improve performance. However, your *CommitVisitors must be thread-safe*, and your analysis must tolerate visiting commits in a relatively arbitrary order. 
-By default, PyDriller uses only 1 thread.
-::
-
-    RepositoryMining('path/to/repo/', mv, num_threads=5)
 

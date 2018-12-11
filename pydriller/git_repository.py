@@ -12,38 +12,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import logging
-from typing import List, Dict, Tuple, Set
-from git import Git, Repo, GitCommandError, Commit as GitCommit
-from pydriller.domain.commit import Commit, ModificationType, Modification
+import os
+from pathlib import Path
 from threading import Lock
+from typing import List, Dict, Tuple, Set
 
-from pydriller.repository import Repository
+from git import Git, Repo, GitCommandError, Commit as GitCommit
+
+from pydriller.domain.commit import Commit, ModificationType, Modification
 
 logger = logging.getLogger(__name__)
 
 NULL_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 
-class GitRepository(Repository):
+class GitRepository:
     def __init__(self, path: str):
         """
         Init the Git Repository.
 
         :param str path: path to the repository
         """
-        super().__init__(path)
-        # self.path = path
-        # self.main_branch = None
-        # self.lock = Lock()
+        self.path = Path(path)
+        self.project_name = self.path.name
+        self.main_branch = None
+        self.lock = Lock()
+
+    @property
+    def git(self):
+        """
+        GitPython object Git.
+
+        :return: Git
+        """
+        return self._open_git()
+
+    @property
+    def repo(self):
+        """
+        GitPython object Repo.
+
+        :return: Repo
+        """
+        return self._open_repository()
 
     def _open_git(self) -> Git:
-        self._open_repository()
-        return Git(self.path)
+        return Git(str(self.path))
 
     def _open_repository(self) -> Repo:
-        repo = Repo(self.path)
+        repo = Repo(str(self.path))
         if self.main_branch is None:
             self._discover_main_branch(repo)
         return repo
@@ -55,25 +73,22 @@ class GitRepository(Repository):
         """
         Get the head commit.
 
-        :return: ChangeSet of the head commit
+        :return: Commit of the head commit
         """
-        repo = self._open_repository()
-        head_commit = repo.head.commit
+        head_commit = self.repo.head.commit
         return Commit(head_commit, self.path, self.main_branch)
 
-    def get_list_commits(self) -> List[Commit]:
+    def get_list_commits(self, branch: str = None) -> List[Commit]:
         """
         Return the list of all the commits in the repo.
 
-        :return: List[ChangeSet], the list of all the commits in the repo
+        :return: List[Commit], the list of all the commits in the repo
         """
-        return self._get_all_commits()
+        return self._get_all_commits(branch)
 
-    def _get_all_commits(self) -> List[Commit]:
-        repo = self._open_repository()
-
+    def _get_all_commits(self, branch: str = None) -> List[Commit]:
         all_commits = []
-        for commit in repo.iter_commits():
+        for commit in self.repo.iter_commits(branch):
             all_commits.append(self.get_commit_from_gitpython(commit))
         return all_commits
 
@@ -84,8 +99,7 @@ class GitRepository(Repository):
         :param str commit_id: hash of the commit to analyze
         :return: Commit
         """
-        repo = self._open_repository()
-        return Commit(repo.commit(commit_id), self.path, self.main_branch)
+        return Commit(self.repo.commit(commit_id), self.path, self.main_branch)
 
     def get_commit_from_gitpython(self, commit: GitCommit) -> Commit:
         """
@@ -107,16 +121,31 @@ class GitRepository(Repository):
         :param _hash: commit hash to checkout
         """
         with self.lock:
-            git = self._open_git()
             self._delete_tmp_branch()
-            git.checkout('-f', _hash, b='_PD')
+            self.git.checkout('-f', _hash, b='_PD')
 
     def _delete_tmp_branch(self) -> None:
-        repo = self._open_repository()
         try:
-            repo.delete_head('_PD')
+            # we are already in _PD, so checkout the master branch before deleting it
+            if self.repo.active_branch.name == '_PD':
+                self.git.checkout('-f', self.main_branch)
+            self.repo.delete_head('_PD', force=True)
         except GitCommandError:
             logger.debug("Branch _PD not found")
+
+    def files(self) -> List[str]:
+        """
+        Obtain the list of the files (excluding .git directory).
+
+        :return: List[str], the list of the files
+        """
+        _all = []
+        for path, subdirs, files in os.walk(str(self.path)):
+            if '.git' in path:
+                continue
+            for name in files:
+                _all.append(os.path.join(path, name))
+        return _all
 
     def reset(self) -> None:
         """
@@ -125,8 +154,7 @@ class GitRepository(Repository):
 
         """
         with self.lock:
-            git = self._open_git()
-            git.checkout('-f', self.main_branch)
+            self.git.checkout('-f', self.main_branch)
             self._delete_tmp_branch()
 
     def total_commits(self) -> int:
@@ -144,13 +172,55 @@ class GitRepository(Repository):
         :param str tag: the tag
         :return: Commit commit: the commit the tag referred to
         """
-        repo = self._open_repository()
         try:
-            selected_tag = repo.tags[tag]
+            selected_tag = self.repo.tags[tag]
             return self.get_commit(selected_tag.commit.hexsha)
         except (IndexError, AttributeError):
             logger.debug('Tag {} not found'.format(tag))
             raise
+
+    def parse_diff(self, diff: str) -> Dict[str, List[Tuple[int, str]]]:
+        """
+        Given a diff, returns a dictionary with the added and deleted lines.
+        The dictionary has 2 keys: "added" and "deleted", each containing the
+        corresponding added or deleted lines. For both keys, the value is a list
+        of Tuple (int, str), corresponding to (number of line in the file, actual line).
+
+
+        :param str diff: diff of the commit
+        :return: Dictionary
+        """
+        lines = diff.split('\n')
+        modified_lines = {'added': [], 'deleted': []}
+
+        count_deletions = 0
+        count_additions = 0
+
+        for line in lines:
+            line = line.rstrip()
+            count_deletions += 1
+            count_additions += 1
+
+            if line.startswith('@@'):
+                count_deletions, count_additions = self._get_line_numbers(line)
+
+            if line.startswith('-'):
+                modified_lines['deleted'].append((count_deletions, line[1:]))
+                count_additions -= 1
+
+            if line.startswith('+'):
+                modified_lines['added'].append((count_additions, line[1:]))
+                count_deletions -= 1
+
+        return modified_lines
+
+    def _get_line_numbers(self, line):
+        token = line.split(" ")
+        numbers_old_file = token[1]
+        numbers_new_file = token[2]
+        delete_line_number = int(numbers_old_file.split(",")[0].replace("-", "")) - 1
+        additions_line_number = int(numbers_new_file.split(",")[0]) - 1
+        return delete_line_number, additions_line_number
 
     def get_commits_last_modified_lines(self, commit: Commit, modification: Modification = None) -> Set[str]:
         """
@@ -171,7 +241,6 @@ class GitRepository(Repository):
         :param Modification modification: single modification to analyze
         :return: the set containing all the bug inducing commits
         """
-        g = self._open_git()
         buggy_commits = set()
 
         if modification is not None:
@@ -186,12 +255,18 @@ class GitRepository(Repository):
 
             deleted_lines = self.parse_diff(mod.diff)['deleted']
             try:
-                blame = g.blame(commit.hash+'^', '--', path).split('\n')
+                blame = self.git.blame(commit.hash + '^', '--', path).split('\n')
                 for num_line, line in deleted_lines:
                     if not self._useless_line(line.strip()):
-                        buggy_commit = blame[num_line - 1].split(' ')[0].replace('^','')
+                        buggy_commit = blame[num_line - 1].split(' ')[0].replace('^', '')
                         buggy_commits.add(self.get_commit(buggy_commit).hash)
             except GitCommandError:
-                logger.debug("Could not found file %s in commit %s. Probably a double rename!", mod.filename, commit.hash)
+                logger.debug("Could not found file %s in commit %s. Probably a double rename!", mod.filename,
+                             commit.hash)
 
         return buggy_commits
+
+    def _useless_line(self, line: str):
+        # this covers comments in Java and Python, as well as empty lines. More have to be added!
+        return not line or line.startswith('//') or line.startswith('#') or line.startswith("/*") or \
+               line.startswith("'''") or line.startswith('"""') or line.startswith("*")

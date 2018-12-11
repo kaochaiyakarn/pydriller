@@ -13,32 +13,41 @@
 # limitations under the License.
 
 import logging
+import os
+import tempfile
+from datetime import datetime
+from typing import List, Generator, Union
 
 import pytz as pytz
+from git import Repo
 
 from pydriller.domain.commit import Commit
-from typing import List, Generator
 from pydriller.git_repository import GitRepository
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
 class RepositoryMining:
-    def __init__(self, path_to_repo: str,
+    def __init__(self, path_to_repo: Union[str, List[str]],
                  single: str = None,
                  since: datetime = None, to: datetime = None,
                  from_commit: str = None, to_commit: str = None,
                  from_tag: str = None, to_tag: str = None,
                  reversed_order: bool = False,
-                 only_in_main_branch: bool = False,
-                 only_in_branches: List[str]= None,
+                 only_in_branch: str = None,
                  only_modifications_with_file_types: List[str] = None,
-                 only_no_merge: bool = False):
+                 only_no_merge: bool = False,
+                 only_authors: List[str] = None,
+                 only_commits: List[str] = None):
         """
-        Init a repository mining.
+        Init a repository mining. The only required parameter is "path_to_repo": to analyze a single repo, pass the absolute
+        path to the repo; if you need to analyze more repos, pass a list of absolute paths.
 
-        :param str path_to_repo: absolute path to the repository you have to analyze
+        Furthermore, PyDriller supports local and remote repositories: if you pass a path to a repo, PyDriller will run the study
+        on that repo; if you pass an URL, PyDriller will clone the repo in a temporary folder, run the study, and
+        delete the temporary folder.
+
+        :param Union[str,List[str]] path_to_repo: absolute path (or list of absolute paths) to the repository(ies) to analyze
         :param str single: hash of a single commit to analyze
         :param datetime since: starting date
         :param datetime to: ending date
@@ -47,97 +56,131 @@ class RepositoryMining:
         :param str from_tag: starting the analysis from specified tag (only if `since` and `from_commit` are None)
         :param str to_tag: ending the analysis from specified tag (only if `to` and `to_commit` are None)
         :param bool reversed_order: whether the commits should be analyzed in reversed order
-        :param bool only_in_main_branch: whether only commits in main branch should be analyzed
-        :param List[str] only_in_branches: only commits in these branches will be analyzed
+        :param str only_in_branch: only commits in this branch will be analyzed
         :param List[str] only_modifications_with_file_types: only modifications with that file types will be analyzed
         :param bool only_no_merge: if True, merges will not be analyzed
+        :param List[str] only_authors: only commits of these authors will be analyzed (the check is done on the username, NOT the email)
+        :param List[str] only_commits: only these commits will be analyzed
         """
-        self.git_repo = GitRepository(path_to_repo)
-        self.single = single
-        self.since = since
-        self.to = to
-        self.reversed_order = reversed_order
-        self.only_in_main_branch = only_in_main_branch
-        self.only_in_branches = only_in_branches
-        self.only_modifications_with_file_types = only_modifications_with_file_types
-        self.only_no_merge = only_no_merge
 
-        self._check_filters(from_commit, from_tag, since, single, to, to_commit, to_tag)
-        self._check_timezones()
+        self._sanity_check_repos(path_to_repo)
+        self._path_to_repo = path_to_repo
 
-    def _check_filters(self, from_commit, from_tag, since, single, to, to_commit, to_tag):
-        if single is not None:
-            if since is not None or to is not None or from_commit is not None or \
-                   to_commit is not None or from_tag is not None or to_tag is not None:
+        self._from_commit = from_commit
+        self._to_commit = to_commit
+        self._from_tag = from_tag
+        self._to_tag = to_tag
+        self._single = single
+        self._since = since
+        self._to = to
+        self._reversed_order = reversed_order
+        self._only_in_branch = only_in_branch
+        self._only_modifications_with_file_types = only_modifications_with_file_types
+        self._only_no_merge = only_no_merge
+        self._only_authors = only_authors
+        self._only_commits = only_commits
+
+    def _sanity_check_repos(self, path_to_repo):
+        if not isinstance(path_to_repo, str) and not isinstance(path_to_repo, list):
+            raise Exception("The path to the repo has to be of type 'string' or 'list of strings'!")
+
+    def _sanity_check_filters(self, git_repo: GitRepository):
+        # If single is defined, not other filters should be
+        if self._single is not None:
+            if self._since is not None or self._to is not None or self._from_commit is not None or \
+                    self._to_commit is not None or self._from_tag is not None or self._to_tag is not None:
                 raise Exception('You can not specify a single commit with other filters')
 
-        if from_commit is not None:
-            if since is not None:
+        # If from_commit is defined, since should not be
+        if self._from_commit is not None:
+            if self._since is not None:
                 raise Exception('You can not specify both <since date> and <from commit>')
-            self.since = self.git_repo.get_commit(from_commit).author_date
+            self._since = git_repo.get_commit(self._from_commit).committer_date
 
-        if to_commit is not None:
-            if to is not None:
+        # If to_commit is defined, to should not be
+        if self._to_commit is not None:
+            if self._to is not None:
                 raise Exception('You can not specify both <to date> and <to commit>')
-            self.to = self.git_repo.get_commit(to_commit).author_date
+            self._to = git_repo.get_commit(self._to_commit).committer_date
 
-        if from_tag is not None:
-            if since is not None or from_commit is not None:
+        # If from_tag is defined, since and from_commit should not be
+        if self._from_tag is not None:
+            if self._since is not None or self._from_commit is not None:
                 raise Exception('You can not specify <since date> or <from commit> when using <from tag>')
-            self.since = self.git_repo.get_commit_from_tag(from_tag).author_date
+            self._since = git_repo.get_commit_from_tag(self._from_tag).committer_date
 
-        if to_tag is not None:
-            if to is not None or to_commit is not None:
+        # If to_tag is defined, to and to_commit should not be
+        if self._to_tag is not None:
+            if self._to is not None or self._to_commit is not None:
                 raise Exception('You can not specify <to date> or <to commit> when using <to tag>')
-            self.to = self.git_repo.get_commit_from_tag(to_tag).author_date
+            self._to = git_repo.get_commit_from_tag(self._to_tag).committer_date
+
+    def _isremote(self, repo: str) -> bool:
+        return repo.startswith("git@") or repo.startswith("https://")
+
+    def _clone_remote_repos(self, tmp_folder: str, repo: str) -> str:
+
+        repo_folder = os.path.join(tmp_folder, self._get_repo_name_from_url(repo))
+        logger.info("Cloning {} in temporary folder {}".format(repo, repo_folder))
+        Repo.clone_from(url=repo, to_path=repo_folder)
+
+        return repo_folder
 
     def traverse_commits(self) -> Generator[Commit, None, None]:
         """
         Analyze all the specified commits (all of them by default), returning
         a generator of commits.
         """
-        logger.info('Git repository in {}'.format(self.git_repo.path))
-        all_cs = self._apply_filters_on_commits(self.git_repo.get_list_commits())
 
-        if not self.reversed_order:
-            all_cs.reverse()
+        if isinstance(self._path_to_repo, str):
+            self._path_to_repo = [self._path_to_repo]
 
-        for commit in all_cs:
-            logger.info('Commit #{} in {} from {}'
-                         .format(commit.hash, commit.author_date, commit.author.name))
+        for path_repo in self._path_to_repo:
+            # if it is a remote repo, clone it first in a temporary folder!
+            if self._isremote(path_repo):
+                tmp_folder = tempfile.TemporaryDirectory()
+                path_repo = self._clone_remote_repos(tmp_folder.name, path_repo)
 
-            if self._is_commit_filtered(commit):
-                logger.info('Commit #{} filtered'.format(commit.hash))
-                continue
+            git_repo = GitRepository(path_repo)
 
-            yield commit
+            self._sanity_check_filters(git_repo)
+            self._check_timezones()
+
+            logger.info('Analyzing git repository in {}'.format(git_repo.path))
+
+            all_cs = self._apply_filters_on_commits(git_repo.get_list_commits(self._only_in_branch))
+
+            if not self._reversed_order:
+                all_cs.reverse()
+
+            for commit in all_cs:
+                logger.info('Commit #{} in {} from {}'.format(commit.hash, commit.committer_date, commit.author.name))
+
+                if self._is_commit_filtered(commit):
+                    logger.info('Commit #{} filtered'.format(commit.hash))
+                    continue
+
+                yield commit
 
     def _is_commit_filtered(self, commit: Commit):
-        if self.only_in_main_branch is True and commit.in_main_branch is False:
-            logger.debug('Commit filtered for main branch')
-            return True
-        if self.only_in_branches is not None:
-            logger.debug('Commit filtered for only in branches')
-            if not self._commit_branch_in_branches(commit):
-                return True
-        if self.only_modifications_with_file_types is not None:
-            logger.debug('Commit filtered for modification types')
+        if self._only_modifications_with_file_types is not None:
             if not self._has_modification_with_file_type(commit):
+                logger.debug('Commit filtered for modification types')
                 return True
-        if self.only_no_merge is True and commit.merge is True:
+        if self._only_no_merge is True and commit.merge is True:
             logger.debug('Commit filtered for no merge')
             return True
-        return False
-
-    def _commit_branch_in_branches(self, commit: Commit):
-        for branch in commit.branches:
-            if branch in self.only_in_branches:
-                return True
+        if self._only_authors is not None and commit.author.name not in self._only_authors:
+            logger.debug("Commit filtered for author")
+            return True
+        if self._only_commits is not None and commit.hash not in self._only_commits:
+            logger.debug("Commit filtered because it is not one of the specified commits")
+            return True
         return False
 
     def _has_modification_with_file_type(self, commit):
         for mod in commit.modifications:
-            if mod.filename.endswith(tuple(self.only_modifications_with_file_types)):
+            if mod.filename.endswith(tuple(self._only_modifications_with_file_types)):
                 return True
         return False
 
@@ -147,22 +190,37 @@ class RepositoryMining:
         if self._all_filters_are_none():
             return all_commits
 
+        if self._single is not None:
+            for commit in all_commits:
+                if commit.hash == self._single:
+                    return [commit]
+            raise Exception("Could not found commit {}".format(self._single))
+
         for commit in all_commits:
-            if self.single is not None and commit.hash == self.single:
-                return [commit]
-            if self.since is None or self.since <= commit.author_date:
-                if self.to is None or commit.author_date <= self.to:
+            if self._since is None or self._since <= commit.committer_date:
+                if self._to is None or commit.committer_date <= self._to:
                     res.append(commit)
                     continue
         return res
 
     def _all_filters_are_none(self):
-        return self.single is None and self.since is None and self.to is None
+        return self._single is None and self._since is None and self._to is None
 
     def _check_timezones(self):
-        if self.since is not None:
-            if self.since.tzinfo is None or self.since.tzinfo.utcoffset(self.since) is None:
-                self.since = self.since.replace(tzinfo=pytz.utc)
-        if self.to is not None:
-            if self.to.tzinfo is None or self.to.tzinfo.utcoffset(self.to) is None:
-                self.to = self.to.replace(tzinfo=pytz.utc)
+        if self._since is not None:
+            if self._since.tzinfo is None or self._since.tzinfo.utcoffset(self._since) is None:
+                self._since = self._since.replace(tzinfo=pytz.utc)
+        if self._to is not None:
+            if self._to.tzinfo is None or self._to.tzinfo.utcoffset(self._to) is None:
+                self._to = self._to.replace(tzinfo=pytz.utc)
+
+    def _get_repo_name_from_url(self, url: str) -> str:
+        last_slash_index = url.rfind("/")
+        last_suffix_index = url.rfind(".git")
+        if last_suffix_index < 0:
+            last_suffix_index = len(url)
+
+        if last_slash_index < 0 or last_suffix_index <= last_slash_index:
+            raise Exception("Badly formatted url {}".format(url))
+
+        return url[last_slash_index + 1:last_suffix_index]

@@ -19,7 +19,7 @@ from pydriller.domain.commit import Modification, ModificationType
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 import pytest
-
+from pathlib import Path
 from pydriller.git_repository import GitRepository
 
 
@@ -37,14 +37,119 @@ def test_equal(resource):
     assert c2 == c3
     assert c1 != c3
 
+
 def test_filename():
-    m1 = Modification('/Users/dspadini/pydriller/myfile.py', "/Users/dspadini/pydriller/mynewfile.py", ModificationType.ADD, [], '')
-    m3 = Modification('/Users/dspadini/pydriller/myfile.py', "/Users/dspadini/pydriller/mynewfile.py",
-                      ModificationType.ADD, [], '')
-    m2 = Modification('/Users/dspadini/pydriller/myfile.py', None,
-                      ModificationType.ADD, [], '')
+    diff_and_sc = {
+        'diff': '',
+        'source_code': ''
+    }
+    m1 = Modification('dspadini/pydriller/myfile.py', 'dspadini/pydriller/mynewfile.py',
+                      ModificationType.ADD, diff_and_sc)
+    m3 = Modification('dspadini/pydriller/myfile.py', 'dspadini/pydriller/mynewfile.py',
+                      ModificationType.ADD, diff_and_sc)
+    m2 = Modification('dspadini/pydriller/myfile.py', None,
+                      ModificationType.ADD, diff_and_sc)
 
     assert m1.filename == 'mynewfile.py'
     assert m2.filename == 'myfile.py'
     assert m1 != m2
     assert m1 == m3
+
+
+def test_metrics_python():
+    with open('test-repos/test6/git_repository.py') as f:
+        sc = f.read()
+
+    diff_and_sc = {
+        'diff': '',
+        'source_code': sc
+    }
+
+    m1 = Modification('test-repos/test6/git_repository.py', "test-repos/test6/git_repository.py",
+                      ModificationType.MODIFY, diff_and_sc)
+
+    assert 196 == m1.nloc
+    assert 1009 == m1.token_count
+    assert 43 == m1.complexity
+
+    assert 19 == len(m1.methods)
+
+
+def test_metrics_cpp():
+    with open('test-repos/test6/FileCPP.cpp') as f:
+        sc = f.read()
+
+    diff_and_sc = {
+        'diff': '',
+        'source_code': sc
+    }
+
+    m1 = Modification('test-repos/test6/FileCPP.cpp', "test-repos/test6/FileCPP.cpp",
+                      ModificationType.MODIFY, diff_and_sc)
+
+    assert 332 == m1.nloc
+    assert 2511 == m1.token_count
+    assert 83 == m1.complexity
+
+    assert 23 == len(m1.methods)
+
+
+def test_metrics_java():
+    with open('test-repos/test6/FileJava.java') as f:
+        sc = f.read()
+
+    diff_and_sc = {
+        'diff': '',
+        'source_code': sc
+    }
+
+    m1 = Modification('test-repos/test6/FileJava.java', "test-repos/test6/FileJava.java",
+                      ModificationType.MODIFY, diff_and_sc)
+
+    assert 466 == m1.nloc
+    assert 3809 == m1.token_count
+    assert 92 == m1.complexity
+
+    assert 46 == len(m1.methods)
+
+
+def test_metrics_not_supported_file():
+    sc = 'asd !&%@*&^@\n jjdkj'
+
+    diff_and_sc = {
+        'diff': '',
+        'source_code': sc
+    }
+
+    m1 = Modification('test-repos/test6/NotSupported.pdf', "test-repos/test6/NotSupported.pdf",
+                      ModificationType.MODIFY, diff_and_sc)
+
+    assert 2 == m1.nloc
+    assert 0 == len(m1.methods)
+
+
+def test_filepahs():
+    gr = GitRepository('test-repos/test7')
+    c = gr.get_commit('f0f8aea2db50ed9f16332d86af3629ff7780583e')
+
+    mod0 = c.modifications[0]
+
+    assert mod0.filename == 'a.java'
+    assert mod0.new_path == str(Path('dir2/a.java'))
+    assert mod0.old_path == str(Path('dir2/a.java'))
+
+
+def test_projectname():
+    gr = GitRepository('test-repos/test7')
+    c = gr.get_commit('f0f8aea2db50ed9f16332d86af3629ff7780583e')
+
+    assert 'test7' == c.project_name
+
+
+def test_modification_type_unknown():
+    gr = GitRepository('test-repos/git-11')
+    c = gr.get_commit('1734d6da01378bad3aade12b52bb4aa8954835dc')
+
+    mod0 = c.modifications[0]
+
+    assert mod0.change_type.name == 'UNKNOWN'
