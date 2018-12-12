@@ -22,7 +22,7 @@ class MercurialRepository(Repository):
         self.main_branch = client.tip().branch.decode('utf-8')
 
     def get_head(self):
-        return CommitMercurial(self.client.tip(), self.path, self.main_branch)
+        return CommitMercurial(self.client.tip(), self.client, self.path, self.main_branch)
 
     def get_list_commits(self):
         return self._get_all_commits()
@@ -34,10 +34,10 @@ class MercurialRepository(Repository):
         return all_commits
 
     def get_commit(self, commit_id: str):
-        return CommitMercurial(self.client.log(commit_id)[0], self.path, self.main_branch)
+        return CommitMercurial(self.client.log(commit_id)[0], self.client, self.path, self.main_branch)
 
     def get_commit_from_hglib(self, commit):
-        return CommitMercurial(commit, self.path, self.main_branch)
+        return CommitMercurial(commit, self.client, self.path, self.main_branch)
 
     def checkout(self, _hash: str):
         pass
