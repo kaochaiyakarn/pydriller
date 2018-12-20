@@ -207,7 +207,8 @@ class RepositoryMining:
 
         return url[last_slash_index + 1:last_suffix_index]
 
-    def traverse_files(self):
+    def traverse_files(self, n_threads: int = 1):
+
         if isinstance(self._path_to_repo, str):
             self._path_to_repo = [self._path_to_repo]
 
