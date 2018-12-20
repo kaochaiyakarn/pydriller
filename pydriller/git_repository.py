@@ -16,7 +16,7 @@ import logging
 import os
 from pathlib import Path
 from threading import Lock
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Generator
 
 from git import Git, Repo, GitCommandError, Commit as GitCommit
 
@@ -38,8 +38,6 @@ class GitRepository:
         self.project_name = self.path.name
         self.main_branch = None
         self.lock = Lock()
-
-        self._all_commits = None
 
     @property
     def git(self):
@@ -80,24 +78,14 @@ class GitRepository:
         head_commit = self.repo.head.commit
         return Commit(head_commit, self.path, self.main_branch)
 
-    def get_list_commits(self, branch: str = None) -> List[Commit]:
+    def get_list_commits(self, branch: str = None, reverse_order: bool = True) -> Generator[Commit, None, None]:
         """
-        Return the list of all the commits in the repo.
+        Return a generator of commits of all the commits in the repo.
 
-        :return: List[Commit], the list of all the commits in the repo
+        :return: Generator[Commit], the generator of all the commits in the repo
         """
-        return self._get_all_commits(branch)
-
-    def _get_all_commits(self, branch: str = None) -> List[Commit]:
-        if self._all_commits:
-            return self._all_commits
-
-        all_commits = []
-        for commit in self.repo.iter_commits(branch):
-            all_commits.append(self.get_commit_from_gitpython(commit))
-        self._all_commits = all_commits
-
-        return all_commits
+        for commit in self.repo.iter_commits(branch, reverse=reverse_order):
+            yield self.get_commit_from_gitpython(commit)
 
     def get_commit(self, commit_id: str) -> Commit:
         """
@@ -168,7 +156,7 @@ class GitRepository:
 
         :return: the total number of commits
         """
-        return len(self.get_list_commits())
+        return len(list(self.get_list_commits()))
 
     def get_commit_from_tag(self, tag: str) -> Commit:
         """
