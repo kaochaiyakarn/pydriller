@@ -265,7 +265,7 @@ class GitRepository:
                line.startswith("'''") or line.startswith('"""') or line.startswith("*")
 
     def get_commits_modified_file(self, filepath: str) -> List[Commit]:
-        all_commits = self._get_all_commits()
+        all_commits = self.get_list_commits()
 
         dict_commits = {}
         for commit in all_commits:

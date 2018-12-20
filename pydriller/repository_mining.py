@@ -219,10 +219,7 @@ class RepositoryMining:
 
             git_repo = GitRepository(path_repo)
 
-            if not self._all_filters_are_none() or \
-                    self._only_in_branch or self._only_modifications_with_file_types or \
-                    self._only_no_merge or self._only_authors or self._only_commits:
-                raise Exception("You can not use filters with 'traverse_files'")
+            # TODO: check that all filters are None
 
             list_of_files = git_repo.git.ls_files().split("\n")
 
