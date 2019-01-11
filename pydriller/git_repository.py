@@ -272,7 +272,7 @@ class GitRepository:
             dict_commits[commit.hash] = commit
 
         # getting the absolute path of the file
-        path = str(Path(filepath).absolute())
+        path = str(Path(filepath))
         commits = []
         try:
             commits = self.git.log("--follow", "--format=%H", path).split('\n')
@@ -281,8 +281,6 @@ class GitRepository:
 
         list_commits = []
         for commit in commits:
-            # I don't have a better idea than this:
-            # unfortunately, this will call `git` for every commit
             list_commits.append(dict_commits[commit.strip()])
 
         return list_commits
